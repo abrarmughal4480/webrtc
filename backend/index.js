@@ -141,6 +141,7 @@ app.get('/send-token', async (req, res) => {
         }
         
         const token = uuidv4();
+        console.log('🎫 Generated meeting token:', token);
         
         // Build URL with profile data - using /room/{token} instead of /room/[token]
         let url = `${process.env.FRONTEND_URL}/room/${token}`;
@@ -184,7 +185,10 @@ app.get('/send-token', async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Error in send-token:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ 
+            error: 'Internal server error',
+            message: error.message 
+        });
     }
 });
 

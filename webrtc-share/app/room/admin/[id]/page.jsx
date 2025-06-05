@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, use, useEffect } from "react"
-import { Camera, Trash2, ImageIcon, Plus, Maximize2, VideoIcon, PlayIcon, Save, Edit, Minimize2, Expand, ZoomIn, ZoomOut, Pencil } from "lucide-react"
+import { Camera, Trash2, ImageIcon, Plus, Maximize2, VideoIcon, PlayIcon, Save, Edit, Minimize2, Expand, ZoomIn, ZoomOut, Pencil, X } from "lucide-react"
 import useWebRTC from "@/hooks/useWebRTC"
 import { createRequest, getMeetingByMeetingId, deleteRecordingRequest, deleteScreenshotRequest } from "@/http/meetingHttp"
 import { toast } from "sonner"
@@ -908,8 +908,83 @@ export default function Page({ params }) {
     });
   };
 
+  // Maximize handlers
+  const [maximizedItem, setMaximizedItem] = useState(null); // { type: 'video'|'screenshot', id: string, data: object }
+
+  const maximizeVideo = (recording) => {
+    setMaximizedItem({
+      type: 'video',
+      id: recording.id,
+      data: recording
+    });
+  };
+
+  const maximizeScreenshot = (screenshot, index, isExisting = false) => {
+    setMaximizedItem({
+      type: 'screenshot',
+      id: isExisting ? screenshot.id : `new-${index}`,
+      data: screenshot,
+      index: isExisting ? null : index,
+      isExisting
+    });
+  };
+
+  const closeMaximized = () => {
+    setMaximizedItem(null);
+  };
+
+  // Handle escape key to close maximized view
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && maximizedItem) {
+        closeMaximized();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [maximizedItem]);
+
   return (
     <div className="max-w-6xl mx-auto p-4 py-10 font-sans">
+      {/* Maximized Item Modal */}
+      {maximizedItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-screen-lg max-h-screen-lg w-full h-full p-4">
+            {/* Close button */}
+            <button
+              onClick={closeMaximized}
+              className="absolute top-4 right-4 z-10 p-2 bg-black bg-opacity-50 text-white rounded-full hover:bg-opacity-75"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Maximized Video */}
+            {maximizedItem.type === 'video' && (
+              <div className="w-full h-full flex items-center justify-center">
+                <video
+                  src={maximizedItem.data.url}
+                  controls
+                  autoPlay
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            )}
+
+            {/* Maximized Screenshot */}
+            {maximizedItem.type === 'screenshot' && (
+              <div className="w-full h-full flex items-center justify-center">
+                <img
+                  src={maximizedItem.isExisting ? maximizedItem.data.url : (markedScreenshots[maximizedItem.id] || maximizedItem.data)}
+                  alt="Maximized screenshot"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <button onClick={startPeerConnection}>Start Peer Connection</button>
       <div className="gap-6" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr' }}>
         {/* Left Column */}
@@ -1047,7 +1122,16 @@ export default function Page({ params }) {
                 
                 {recordings.map((recording) => (
                   <div key={recording.id} className="relative group">
-                    <div className="aspect-square bg-gray-200 rounded-md overflow-hidden relative">
+                    <img src="/icons/ci_label.svg" className="mb-2" />
+                    <div className="aspect-square bg-gray-200 rounded-md overflow-hidden relative cursor-pointer"
+                         onClick={(e) => {
+                           const video = e.currentTarget.querySelector('video');
+                           if (video.paused) {
+                             video.play();
+                           } else {
+                             video.pause();
+                           }
+                         }}>
                       <video
                         src={recording.url}
                         controls={false}
@@ -1059,24 +1143,10 @@ export default function Page({ params }) {
                           newSet.delete(recording.id);
                           return newSet;
                         })}
-                        onClick={(e) => {
-                          // Toggle play/pause on click since controls are hidden
-                          if (e.target.paused) {
-                            e.target.play();
-                          } else {
-                            e.target.pause();
-                          }
-                        }}
                       />
                       
-                      {/* Play icon - show only when paused or on hover when playing */}
-                      <div 
-                        className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-300 ${
-                          playingVideos.has(recording.id) 
-                            ? 'opacity-0 group-hover:opacity-60' 
-                            : 'opacity-70'
-                        }`}
-                      >
+                      {/* Play icon - always visible on container */}
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                         <PlayIcon className="w-8 h-8 text-white/80 drop-shadow-md filter" />
                       </div>
 
@@ -1085,12 +1155,17 @@ export default function Page({ params }) {
                         <button 
                           className="p-1 hover:bg-black/20 rounded text-white"
                           title="Minimize"
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <Minimize2 className="w-4 h-4" />
                         </button>
                         <button 
                           className="p-1 hover:bg-black/20 rounded text-white"
                           title="Maximize"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            maximizeVideo(recording);
+                          }}
                         >
                           <Expand className="w-4 h-4" />
                         </button>
@@ -1099,7 +1174,10 @@ export default function Page({ params }) {
                       {/* Action icons moved to bottom right corner, vertical alignment */}
                       <div className="absolute bottom-2 right-2 flex flex-col gap-1 z-10">
                         <button 
-                          onClick={() => saveIndividualRecording(recording)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            saveIndividualRecording(recording);
+                          }}
                           className={`p-1 hover:bg-black/20 rounded text-white ${recording.isExisting ? 'opacity-50' : ''}`}
                           title={recording.isExisting ? "Already saved" : "Save recording"}
                           disabled={recording.isExisting}
@@ -1107,7 +1185,10 @@ export default function Page({ params }) {
                           <Save className="w-4 h-4" />
                         </button>
                         <button 
-                          onClick={() => deleteRecording(recording)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteRecording(recording);
+                          }}
                           className="p-1 hover:bg-black/20 rounded text-white"
                           title="Delete"
                         >
@@ -1115,7 +1196,6 @@ export default function Page({ params }) {
                         </button>
                       </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{recording.timestamp} - Duration: {formatRecordingTime(recording.duration)}</p>
                   </div>
                 ))}
               </div>
@@ -1135,12 +1215,15 @@ export default function Page({ params }) {
                 {existingScreenshots.map((screenshot, index) => (
                   <div key={`existing-${screenshot.id}`}>
                     <img src="/icons/ci_label.svg" className="mb-2" />
-                    <div className="aspect-square bg-gray-200 rounded-md flex items-center justify-center relative">
+                    <div className="aspect-square bg-gray-200 rounded-md overflow-hidden flex items-center justify-center relative">
                       <div className="absolute top-2 right-2 flex flex-row gap-1 z-10">
                         <button className="p-1 hover:bg-black/20 rounded text-white">
                           <Minimize2 className="w-4 h-4" />
                         </button>
-                        <button className="p-1 hover:bg-black/20 rounded text-white">
+                        <button 
+                          className="p-1 hover:bg-black/20 rounded text-white"
+                          onClick={() => maximizeScreenshot(screenshot, index, true)}
+                        >
                           <Expand className="w-4 h-4" />
                         </button>
                       </div>
@@ -1166,10 +1249,9 @@ export default function Page({ params }) {
                       <img
                         src={screenshot.url}
                         alt="existing screenshot"
-                        className="w-full h-full object-cover absolute top-0 left-0 z-0"
+                        className="w-full h-full object-cover absolute top-0 left-0 z-0 rounded-md"
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">{screenshot.timestamp} (Saved)</p>
                   </div>
                 ))}
 
@@ -1177,12 +1259,15 @@ export default function Page({ params }) {
                 {screenshots.map((screenshot, index) => (
                   <div key={`new-${index}`}>
                     <img src="/icons/ci_label.svg" className="mb-2" />
-                    <div className="aspect-square bg-gray-200 rounded-md flex items-center justify-center relative">
+                    <div className="aspect-square bg-gray-200 rounded-md overflow-hidden flex items-center justify-center relative">
                       <div className="absolute top-2 right-2 flex flex-row gap-1 z-10">
                         <button className="p-1 hover:bg-black/20 rounded text-white">
                           <Minimize2 className="w-4 h-4" />
                         </button>
-                        <button className="p-1 hover:bg-black/20 rounded text-white">
+                        <button 
+                          className="p-1 hover:bg-black/20 rounded text-white"
+                          onClick={() => maximizeScreenshot(screenshot, index, false)}
+                        >
                           <Expand className="w-4 h-4" />
                         </button>
                       </div>
@@ -1215,7 +1300,7 @@ export default function Page({ params }) {
                       <img
                         src={markedScreenshots[`new-${index}`] || screenshot}
                         alt="new screenshot"
-                        className="w-full h-full object-cover absolute top-0 left-0 z-0"
+                        className="w-full h-full object-cover absolute top-0 left-0 z-0 rounded-md"
                       />
                       
                       {/* Canvas overlay for drawing - only show when pencil is active */}
@@ -1272,7 +1357,6 @@ export default function Page({ params }) {
                         </div>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">New (Not saved)</p>
                   </div>
                 ))}
               </div>

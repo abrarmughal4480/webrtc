@@ -2409,15 +2409,15 @@ export const DialogProvider = ({ children }) => {
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
                       <div className="text-2xl font-bold text-blue-600">
-                        {getUniqueVisitors(selectedMeetingForHistory.access_history).length}
+                        {selectedMeetingForHistory.total_access_count || selectedMeetingForHistory.access_history?.length || 0}
                       </div>
-                      <div className="text-xs text-gray-600">Total Unique Visitors</div>
+                      <div className="text-xs text-gray-600">Total Accesses</div>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-green-600">
-                        {selectedMeetingForHistory.recordings?.length || 0}
+                        {getUniqueVisitors(selectedMeetingForHistory.access_history).length}
                       </div>
-                      <div className="text-xs text-gray-600">Video Recordings</div>
+                      <div className="text-xs text-gray-600">Unique Visitors</div>
                     </div>
                     <div>
                       <div className="text-2xl font-bold text-purple-600">

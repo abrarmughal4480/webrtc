@@ -30,7 +30,7 @@ router.route('/meetings/:id').put(isAuthenticate, updateMeeting);
 router.route('/meetings/:id').delete(isAuthenticate, deleteMeeting);
 router.route('/meetings/:id/archive').put(isAuthenticate, archiveMeeting);
 router.route('/meetings/:id/unarchive').put(isAuthenticate, unarchiveMeeting);
-router.route('/meetings/by-meeting-id/:meetingId').get(isAuthenticate, getMeetingByMeetingId);
+router.route('/meetings/by-meeting-id/:id').get(isAuthenticate, getMeetingByMeetingId);
 router.route('/meetings/:meetingId/recordings/:recordingId').delete(isAuthenticate, deleteRecording);
 router.route('/meetings/:meetingId/screenshots/:screenshotId').delete(isAuthenticate, deleteScreenshot);
 
