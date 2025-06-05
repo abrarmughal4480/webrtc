@@ -2,10 +2,14 @@
 import { useState, useRef, use, useEffect } from "react"
 import { VideoIcon, PlayIcon, Minimize2, Expand, ZoomIn, ZoomOut } from "lucide-react"
 import { getMeetingByMeetingId } from "@/http/meetingHttp"
+import { recordVisitorAccessRequest } from "@/http/meetingHttp"
+import { useDialog } from "@/provider/DilogsProvider"
 import { toast } from "sonner"
 
 export default function SharePage({ params }) {
   const { id } = use(params);
+  const { openVisitorAccessModal } = useDialog();
+  
   const [targetTime, setTargetTime] = useState("Emergency 24 Hours")
   const [residentName, setResidentName] = useState("")
   const [residentAddress, setResidentAddress] = useState("")
@@ -18,6 +22,7 @@ export default function SharePage({ params }) {
   const [recordings, setRecordings] = useState([]);
   const [screenshots, setScreenshots] = useState([]);
   const [playingVideos, setPlayingVideos] = useState(new Set());
+  const [accessGranted, setAccessGranted] = useState(false);
 
   // Format recording duration
   const formatRecordingTime = (seconds) => {
@@ -26,72 +31,104 @@ export default function SharePage({ params }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Fetch meeting data when component mounts
-  useEffect(() => {
-    const fetchMeetingData = async () => {
-      if (!id) return;
+  // Function to handle visitor access
+  const handleVisitorAccess = async (visitorData) => {
+    try {
+      console.log('🔐 Recording visitor access for meeting:', id);
+      const response = await recordVisitorAccessRequest(id, visitorData);
       
-      setIsLoadingMeetingData(true);
-      try {
-        console.log('🔍 Fetching meeting data for share ID:', id);
-        const response = await getMeetingByMeetingId(id);
+      if (response.success) {
+        setAccessGranted(true);
+        console.log('✅ Visitor access recorded successfully');
         
-        if (response.data.success && response.data.meeting) {
-          const meetingData = response.data.meeting;
-          console.log('✅ Found meeting data:', meetingData);
-          
-          // Populate form fields with existing data (read-only)
-          setResidentName(meetingData.name || "");
-          setResidentAddress(meetingData.address || "");
-          setPostCode(meetingData.post_code || "");
-          setRepairDetails(meetingData.repair_detail || "");
-          setTargetTime(meetingData.target_time || "Emergency 24 Hours");
-          
-          // Load recordings
-          if (meetingData.recordings && meetingData.recordings.length > 0) {
-            const recordingsData = meetingData.recordings.map(rec => ({
-              id: rec._id || Date.now() + Math.random(),
-              url: rec.url,
-              timestamp: new Date(rec.timestamp).toLocaleString(),
-              duration: rec.duration || 0
-            }));
-            setRecordings(recordingsData);
-          }
-          
-          // Load screenshots
-          if (meetingData.screenshots && meetingData.screenshots.length > 0) {
-            const screenshotsData = meetingData.screenshots.map(screenshot => ({
-              id: screenshot._id || Date.now() + Math.random(),
-              url: screenshot.url,
-              timestamp: new Date(screenshot.timestamp).toLocaleString()
-            }));
-            setScreenshots(screenshotsData);
-          }
-          
-          setMeetingData(meetingData);
-          
-          toast.success("Meeting data loaded successfully!", {
-            description: `Found ${meetingData.recordings?.length || 0} recordings and ${meetingData.screenshots?.length || 0} screenshots`
-          });
-        }
-      } catch (error) {
-        console.error('❌ Failed to fetch meeting data:', error);
-        toast.error("Failed to load meeting data", {
-          description: error?.response?.data?.message || error.message
-        });
-      } finally {
-        setIsLoadingMeetingData(false);
+        // Now fetch meeting data
+        await fetchMeetingData();
+      } else {
+        throw new Error(response.message || 'Failed to record access');
       }
-    };
+    } catch (error) {
+      console.error('❌ Failed to record visitor access:', error);
+      throw error;
+    }
+  };
 
-    fetchMeetingData();
-  }, [id]);
+  // Fetch meeting data when component mounts
+  const fetchMeetingData = async () => {
+    if (!id) return;
+    
+    setIsLoadingMeetingData(true);
+    try {
+      console.log('🔍 Fetching meeting data for share ID:', id);
+      const response = await getMeetingByMeetingId(id);
+      
+      if (response.data.success && response.data.meeting) {
+        const meetingData = response.data.meeting;
+        console.log('✅ Found meeting data:', meetingData);
+        
+        // Populate form fields with existing data (read-only)
+        setResidentName(meetingData.name || "");
+        setResidentAddress(meetingData.address || "");
+        setPostCode(meetingData.post_code || "");
+        setRepairDetails(meetingData.repair_detail || "");
+        setTargetTime(meetingData.target_time || "Emergency 24 Hours");
+        
+        // Load recordings
+        if (meetingData.recordings && meetingData.recordings.length > 0) {
+          const recordingsData = meetingData.recordings.map(rec => ({
+            id: rec._id || Date.now() + Math.random(),
+            url: rec.url,
+            timestamp: new Date(rec.timestamp).toLocaleString(),
+            duration: rec.duration || 0
+          }));
+          setRecordings(recordingsData);
+        }
+        
+        // Load screenshots
+        if (meetingData.screenshots && meetingData.screenshots.length > 0) {
+          const screenshotsData = meetingData.screenshots.map(screenshot => ({
+            id: screenshot._id || Date.now() + Math.random(),
+            url: screenshot.url,
+            timestamp: new Date(screenshot.timestamp).toLocaleString()
+          }));
+          setScreenshots(screenshotsData);
+        }
+        
+        setMeetingData(meetingData);
+        
+        toast.success("Meeting data loaded successfully!", {
+          description: `Found ${meetingData.recordings?.length || 0} recordings and ${meetingData.screenshots?.length || 0} screenshots`
+        });
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch meeting data:', error);
+      toast.error("Failed to load meeting data", {
+        description: error?.response?.data?.message || error.message
+      });
+    } finally {
+      setIsLoadingMeetingData(false);
+    }
+  };
 
-  if (isLoadingMeetingData) {
+  useEffect(() => {
+    if (!id) return;
+    
+    // Check if access has been granted, if not show visitor modal
+    if (!accessGranted) {
+      console.log('🔐 Access not granted, showing visitor modal...');
+      openVisitorAccessModal(handleVisitorAccess);
+    } else {
+      fetchMeetingData();
+    }
+  }, [id, accessGranted]);
+
+  // Show loading while waiting for access or loading data
+  if (!accessGranted || isLoadingMeetingData) {
     return (
       <div className="max-w-6xl mx-auto p-4 py-10 font-sans">
         <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading meeting data...</div>
+          <div className="text-lg">
+            {!accessGranted ? "Please provide your information to access this meeting..." : "Loading meeting data..."}
+          </div>
         </div>
       </div>
     );
@@ -305,7 +342,14 @@ export default function SharePage({ params }) {
         </div>
       </div>
 
-      <p className="text-xs mt-5">Shared Content - Meeting ID: {id}</p>
+      <p className="text-xs mt-5">
+        Shared Content - Meeting ID: {id}
+        {meetingData?.total_access_count && (
+          <span className="ml-2 text-gray-500">
+            (Accessed {meetingData.total_access_count} time{meetingData.total_access_count !== 1 ? 's' : ''})
+          </span>
+        )}
+      </p>
     </div>
   )
 }

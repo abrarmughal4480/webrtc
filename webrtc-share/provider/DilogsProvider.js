@@ -99,6 +99,18 @@ export const DialogProvider = ({ children }) => {
         deleteOfficerImage: false
     });
 
+    // Add new state for visitor access modal
+    const [visitorAccessOpen, setVisitorAccessOpen] = useState(false);
+    const [visitorName, setVisitorName] = useState('');
+    const [visitorEmail, setVisitorEmail] = useState('');
+    const [visitorLoading, setVisitorLoading] = useState(false);
+    const [visitorAccessCallback, setVisitorAccessCallback] = useState(null);
+
+    // Add new state for history modal
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [selectedMeetingForHistory, setSelectedMeetingForHistory] = useState(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
+
     const addEmailField = () => {
         setInviteEmails([...inviteEmails, '']);
     };
@@ -1135,7 +1147,199 @@ export const DialogProvider = ({ children }) => {
         }, 1000);
     };
 
-    // Modified value object to include new functions and meeting selection
+    // Add visitor access handler with localStorage
+    const handleVisitorAccess = async (e) => {
+        e.preventDefault();
+        
+        if (!visitorName.trim()) {
+            toast("Name Required", {
+                description: "Please enter your name"
+            });
+            return;
+        }
+
+        if (!visitorEmail.trim()) {
+            toast("Email Required", {
+                description: "Please enter your email address"
+            });
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(visitorEmail)) {
+            toast("Invalid Email", {
+                description: "Please enter a valid email address"
+            });
+            return;
+        }
+
+        setVisitorLoading(true);
+        
+        try {
+            // Call the callback function with visitor data
+            if (visitorAccessCallback) {
+                await visitorAccessCallback({
+                    visitor_name: visitorName.trim(),
+                    visitor_email: visitorEmail.trim().toLowerCase()
+                });
+            }
+            
+            // Save visitor access token to localStorage with 1 hour expiry
+            const visitorToken = {
+                name: visitorName.trim(),
+                email: visitorEmail.trim().toLowerCase(),
+                timestamp: Date.now(),
+                expiresAt: Date.now() + (60 * 60 * 1000) // 1 hour from now
+            };
+            
+            localStorage.setItem('visitorAccessToken', JSON.stringify(visitorToken));
+            
+            toast("Access Granted", {
+                description: "Your information has been recorded successfully"
+            });
+            
+            // Reset form and close modal
+            setVisitorName('');
+            setVisitorEmail('');
+            setVisitorAccessOpen(false);
+            
+        } catch (error) {
+            toast("Failed to Record Access", {
+                description: error.message || "Please try again"
+            });
+        } finally {
+            setVisitorLoading(false);
+        }
+    };
+
+    // Function to check if visitor has valid access token
+    const checkVisitorAccess = () => {
+        try {
+            const storedToken = localStorage.getItem('visitorAccessToken');
+            
+            if (!storedToken) {
+                return false;
+            }
+            
+            const visitorToken = JSON.parse(storedToken);
+            const currentTime = Date.now();
+            
+            // Check if token is expired
+            if (currentTime > visitorToken.expiresAt) {
+                // Remove expired token
+                localStorage.removeItem('visitorAccessToken');
+                return false;
+            }
+            
+            // Token is valid
+            console.log('🎫 Valid visitor access token found:', {
+                name: visitorToken.name,
+                email: visitorToken.email,
+                expiresAt: new Date(visitorToken.expiresAt).toLocaleString()
+            });
+            
+            return true;
+            
+        } catch (error) {
+            console.error('❌ Error checking visitor access:', error);
+            // Remove corrupted token
+            localStorage.removeItem('visitorAccessToken');
+            return false;
+        }
+    };
+
+    // Function to open visitor access modal with localStorage check
+    const openVisitorAccessModal = (callback) => {
+        // Check if user already has valid access
+        if (checkVisitorAccess()) {
+            console.log('✅ Visitor already has valid access, skipping modal');
+            // Call the callback directly without showing modal
+            const storedToken = JSON.parse(localStorage.getItem('visitorAccessToken'));
+            callback({
+                visitor_name: storedToken.name,
+                visitor_email: storedToken.email,
+                from_storage: true
+            });
+            return;
+        }
+        
+        console.log('🔓 No valid visitor access found, showing modal');
+        setVisitorAccessCallback(() => callback);
+        setVisitorAccessOpen(true);
+    };
+
+    // Function to manually clear visitor access (for logout or testing)
+    const clearVisitorAccess = () => {
+        localStorage.removeItem('visitorAccessToken');
+        console.log('🗑️ Visitor access token cleared');
+        toast("Access cleared", {
+            description: "You will need to provide your information again"
+        });
+    };
+
+    // Helper function to format date for history
+    const formatHistoryDate = (dateString) => {
+        if (!dateString) return 'Unknown';
+        const date = new Date(dateString);
+        
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        const hours = date.getHours();
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = String(hours % 12 || 12).padStart(2, '0');
+        
+        return `${day}/${month}/${year} at ${displayHours}:${minutes} ${ampm}`;
+    };
+
+    // Helper function to get IP location (simplified)
+    const getLocationFromIP = (ip) => {
+        if (!ip || ip === 'unknown' || ip.includes('127.0.0.1') || ip.includes('::1')) {
+            return 'Local/Unknown';
+        }
+        // For demo purposes, return a placeholder. In production, you'd use a geolocation service
+        return 'Location not available';
+    };
+
+    // Helper function to parse user agent (simplified)
+    const parseUserAgent = (userAgent) => {
+        if (!userAgent) return 'Unknown Browser';
+        
+        // Simple browser detection
+        if (userAgent.includes('Chrome')) return 'Google Chrome';
+        if (userAgent.includes('Firefox')) return 'Mozilla Firefox';
+        if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari';
+        if (userAgent.includes('Edge')) return 'Microsoft Edge';
+        if (userAgent.includes('Opera')) return 'Opera';
+        
+        return 'Unknown Browser';
+    };
+
+    // Helper function to get unique visitors by email
+    const getUniqueVisitors = (accessHistory) => {
+        if (!accessHistory || !Array.isArray(accessHistory)) return [];
+        
+        const uniqueEmails = new Set();
+        const uniqueVisitors = [];
+        
+        // Sort by access time (newest first) to get the latest entry for each email
+        const sortedHistory = [...accessHistory].sort((a, b) => 
+            new Date(b.access_time) - new Date(a.access_time)
+        );
+        
+        sortedHistory.forEach(access => {
+            const email = access.visitor_email?.toLowerCase() || 'no-email';
+            if (!uniqueEmails.has(email)) {
+                uniqueEmails.add(email);
+                uniqueVisitors.push(access);
+            }
+        });
+        
+        return uniqueVisitors;
+    };
+
     const value = {
         setResetOpen,
         setMessageOpen,
@@ -1166,13 +1370,25 @@ export const DialogProvider = ({ children }) => {
         handleGenerateWord,
         handleGeneratePDF,
         handleCreateShareLink,
-        exportLoading
+        exportLoading,
+        openVisitorAccessModal,
+        visitorAccessOpen,
+        setVisitorAccessOpen,
+        clearVisitorAccess, // Add this for manual clearing if needed
+        checkVisitorAccess, // Add this for external checks if needed
+        setHistoryOpen: (open, meeting = null) => {
+            setHistoryOpen(open);
+            if (meeting) {
+                setSelectedMeetingForHistory(meeting);
+            }
+        },
+        historyOpen,
+        selectedMeetingForHistory
     };
 
     return (
     <DialogContext.Provider value={value}>
       {children}
-
 
       <DialogComponent open={resetOpen} setOpen={setResetOpen} isCloseable={true}>
         <div className="w-[340px] max-h-[90vh] rounded-2xl bg-purple-500 shadow-md overflow-hidden">
@@ -2078,6 +2294,237 @@ export const DialogProvider = ({ children }) => {
                 {exportLoading.pdf && <Loader2 className="w-4 h-4 animate-spin ml-auto" />}
               </button>
             </div>
+          </div>
+        </div>
+      </DialogComponent>
+
+      {/* Visitor Access Modal */}
+      <DialogComponent open={visitorAccessOpen} setOpen={() => {}} isCloseable={false}>
+        <div className="w-[400px] max-h-[90vh] rounded-2xl bg-purple-500 shadow-md overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-center bg-purple-500 text-white p-4 m-0">
+            <div className="flex items-center gap-2">
+              <img src="/icons/ri_user-add-line.svg" className="w-5 h-5 filter brightness-0 invert" />
+              <h2 className="text-base font-semibold">Visitor Information Required</h2>
+            </div>
+          </div>
+
+          <div className="p-5 bg-white rounded-b-2xl max-h-[calc(90vh-4rem)] overflow-y-auto">
+            <p className="text-sm text-gray-600 mb-4 text-center">
+              Please provide your information to access this meeting content.
+            </p>
+            
+            <form onSubmit={handleVisitorAccess}>
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="Enter your full name"
+                  className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={visitorName}
+                  onChange={(e) => setVisitorName(e.target.value)}
+                  required
+                />
+                <input
+                  type="email"
+                  placeholder="Enter your email address"
+                  className="w-full px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={visitorEmail}
+                  onChange={(e) => setVisitorEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit"
+                disabled={visitorLoading}
+                className="mt-6 w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white py-3 rounded-full text-sm font-medium flex items-center justify-center gap-2"
+              >
+                {visitorLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Recording Access...
+                  </>
+                ) : (
+                  'Access Meeting Content'
+                )}
+              </button>
+            </form>
+
+            <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-blue-800 text-center">
+                Your information will be recorded for access tracking purposes only.
+              </p>
+            </div>
+          </div>
+        </div>
+      </DialogComponent>
+
+      {/* History Modal */}
+      <DialogComponent open={historyOpen} setOpen={setHistoryOpen} isCloseable={true}>
+        <div className="w-[600px] max-h-[90vh] rounded-2xl bg-purple-500 shadow-md overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-center bg-purple-500 text-white p-4 m-0 relative">
+            <div className="flex items-center gap-2">
+              <img src="/icons/icon-park-outline_history-query.svg" className="w-5 h-5 filter brightness-0 invert" />
+              <h2 className="text-base font-semibold">Meeting Access History</h2>
+            </div>
+            <button
+              onClick={() => setHistoryOpen(false)}
+              aria-label="Close"
+              className="absolute right-4 text-white hover:text-gray-200"
+            >
+              <XIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="p-5 bg-white rounded-b-2xl max-h-[calc(90vh-4rem)] overflow-y-auto">
+            {selectedMeetingForHistory ? (
+              <div className="space-y-4">
+                {/* Meeting Info Header */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-lg mb-2">Meeting Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="font-medium">Meeting ID:</span>
+                      <p className="text-gray-600">{selectedMeetingForHistory.meeting_id}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Resident:</span>
+                      <p className="text-gray-600">{selectedMeetingForHistory.name || 'Unknown'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Address:</span>
+                      <p className="text-gray-600">{selectedMeetingForHistory.address || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <span className="font-medium">Created:</span>
+                      <p className="text-gray-600">{formatHistoryDate(selectedMeetingForHistory.createdAt)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Access Statistics */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">Access Statistics</h4>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <div className="text-2xl font-bold text-blue-600">
+                        {getUniqueVisitors(selectedMeetingForHistory.access_history).length}
+                      </div>
+                      <div className="text-xs text-gray-600">Total Unique Visitors</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-green-600">
+                        {selectedMeetingForHistory.recordings?.length || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Video Recordings</div>
+                    </div>
+                    <div>
+                      <div className="text-2xl font-bold text-purple-600">
+                        {selectedMeetingForHistory.screenshots?.length || 0}
+                      </div>
+                      <div className="text-xs text-gray-600">Screenshots</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Access History List - Only Unique Visitors */}
+                <div>
+                  <h4 className="font-semibold mb-3">Unique Visitor Access Log</h4>
+                  {(() => {
+                    const uniqueVisitors = getUniqueVisitors(selectedMeetingForHistory.access_history);
+                    
+                    if (uniqueVisitors.length > 0) {
+                      return (
+                        <div className="space-y-3 max-h-60 overflow-y-auto">
+                          {uniqueVisitors.map((access, index) => (
+                            <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <span className="text-blue-600 font-semibold text-lg">
+                                    {access.visitor_name ? access.visitor_name.charAt(0).toUpperCase() : 'V'}
+                                  </span>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="font-semibold text-base text-gray-900">
+                                    {access.visitor_name || 'Unknown Visitor'}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    {access.visitor_email || 'No email provided'}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-xs text-gray-400 mb-1">
+                                    #{index + 1}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    Latest: {formatHistoryDate(access.access_time)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="text-center py-8 text-gray-500">
+                          <img src="/icons/icon-park-outline_history-query.svg" className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                          <p>No visitor access recorded yet</p>
+                          <p className="text-sm">When someone visits the shared link, their access will be logged here.</p>
+                        </div>
+                      );
+                    }
+                  })()}
+                </div>
+
+                {/* Meeting Content Summary */}
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold mb-3">Content Summary</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-green-50 p-3 rounded">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Recordings</span>
+                        <span className="text-lg font-bold text-green-600">
+                          {selectedMeetingForHistory.recordings?.length || 0}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Screenshots</span>
+                        <span className="text-lg font-bold text-blue-600">
+                          {selectedMeetingForHistory.screenshots?.length || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Share Link */}
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <span className="text-sm font-medium block mb-2">Share Link:</span>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white p-2 rounded text-xs flex-1 border">
+                      {`${window.location.origin}/share/${selectedMeetingForHistory.meeting_id}`}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/share/${selectedMeetingForHistory.meeting_id}`);
+                        toast.success("Link copied to clipboard!");
+                      }}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-xs"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <p>No meeting selected</p>
+              </div>
+            )}
           </div>
         </div>
       </DialogComponent>

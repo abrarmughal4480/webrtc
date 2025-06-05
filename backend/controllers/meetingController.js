@@ -552,7 +552,7 @@ export const getMeetingById = catchAsyncError(async (req, res, next) => {
     sendResponse(true, 200, "Meeting retrieved successfully", res, { meeting });
 });
 
-// Get meeting by ID for sharing (public access)
+// Get meeting by ID for sharing (public access) - Updated to return history
 export const getMeetingForShare = catchAsyncError(async (req, res, next) => {
     const meeting = await MeetingModel.findOne({
         meeting_id: req.params.id
@@ -574,13 +574,120 @@ export const getMeetingForShare = catchAsyncError(async (req, res, next) => {
         screenshots: meeting.screenshots,
         createdAt: meeting.createdAt,
         total_recordings: meeting.total_recordings,
-        total_screenshots: meeting.total_screenshots
+        total_screenshots: meeting.total_screenshots,
+        total_access_count: meeting.total_access_count || 0,
+        access_history: meeting.access_history || []
     };
 
     res.status(200).json({
         success: true,
         message: "Meeting data retrieved for sharing",
         meeting: shareData
+    });
+});
+
+// New function to record visitor access
+export const recordVisitorAccess = catchAsyncError(async (req, res, next) => {
+    const { visitor_name, visitor_email, from_storage = false } = req.body;
+    const meetingId = req.params.id;
+    
+    console.log(`👤 Recording visitor access for meeting: ${meetingId}`, {
+        visitor_name,
+        visitor_email,
+        from_storage
+    });
+
+    // Validate required fields
+    if (!visitor_name || !visitor_email) {
+        return next(new ErrorHandler("Visitor name and email are required", 400));
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(visitor_email)) {
+        return next(new ErrorHandler("Please enter a valid email address", 400));
+    }
+
+    const meeting = await MeetingModel.findOne({
+        meeting_id: meetingId
+    });
+
+    if (!meeting) {
+        return next(new ErrorHandler("Meeting not found", 404));
+    }
+
+    // Get client information
+    const ip_address = req.ip || req.connection.remoteAddress || req.socket.remoteAddress || 
+                      (req.connection.socket ? req.connection.socket.remoteAddress : null);
+    const user_agent = req.get('User-Agent') || 'Unknown';
+
+    // Check if this visitor already accessed recently (within last hour)
+    if (!from_storage) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        const recentAccess = meeting.access_history?.find(access => 
+            access.visitor_email === visitor_email.toLowerCase() && 
+            access.access_time > oneHourAgo
+        );
+
+        if (recentAccess) {
+            console.log('🔄 Visitor already accessed recently, updating last access time');
+            recentAccess.access_time = new Date();
+            await meeting.save();
+            
+            return res.status(200).json({
+                success: true,
+                message: "Welcome back! Your access has been refreshed.",
+                access_count: meeting.total_access_count,
+                visitor_info: {
+                    name: visitor_name,
+                    email: visitor_email,
+                    access_time: recentAccess.access_time,
+                    returning_visitor: true
+                }
+            });
+        }
+    }
+
+    // Create new visitor access record
+    const visitorAccess = {
+        visitor_name: visitor_name.trim(),
+        visitor_email: visitor_email.trim().toLowerCase(),
+        access_time: new Date(),
+        ip_address: ip_address,
+        user_agent: user_agent,
+        from_storage: from_storage || false
+    };
+
+    // Add to access history
+    if (!meeting.access_history) {
+        meeting.access_history = [];
+    }
+    
+    meeting.access_history.push(visitorAccess);
+    meeting.total_access_count = (meeting.total_access_count || 0) + 1;
+
+    await meeting.save();
+
+    console.log(`✅ Visitor access recorded successfully:`, {
+        meeting_id: meetingId,
+        visitor: visitor_name,
+        email: visitor_email,
+        total_access: meeting.total_access_count,
+        from_storage
+    });
+
+    res.status(200).json({
+        success: true,
+        message: from_storage ? 
+            "Access restored from saved session" : 
+            "Visitor access recorded successfully",
+        access_count: meeting.total_access_count,
+        visitor_info: {
+            name: visitor_name,
+            email: visitor_email,
+            access_time: visitorAccess.access_time,
+            session_expires: new Date(Date.now() + 60 * 60 * 1000) // 1 hour from now
+        }
     });
 });
 

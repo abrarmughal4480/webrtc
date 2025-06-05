@@ -2,7 +2,7 @@ import express from 'express';
 const router = express.Router();
 import {changePassword, loadme, login, logout, register, updateUser,forgotPassword,resetPassword, verify, sendFriendLink, resetPasswordFromDashboard, sendFeedback, raiseSupportTicket, updateUserLogo, updateLandlordInfo} from './controllers/authController.js';
 import {isAuthenticate} from "./middlewares/auth.js"
-import { create, getAllMeetings, getMeetingById, updateMeeting, deleteMeeting, getMeetingForShare, getMeetingByMeetingId, deleteRecording, deleteScreenshot, archiveMeeting, unarchiveMeeting, getArchivedCount } from './controllers/meetingController.js';
+import { create, getAllMeetings, getMeetingById, updateMeeting, deleteMeeting, getMeetingForShare, getMeetingByMeetingId, deleteRecording, deleteScreenshot, archiveMeeting, unarchiveMeeting, getArchivedCount, recordVisitorAccess } from './controllers/meetingController.js';
 
 // auth routes
 router.route('/register').post(register);
@@ -36,5 +36,8 @@ router.route('/meetings/:meetingId/screenshots/:screenshotId').delete(isAuthenti
 
 // Public route for sharing meetings (no authentication required)
 router.route('/meetings/share/:id').get(getMeetingForShare);
+
+// New public route for recording visitor access (no authentication required)
+router.route('/meetings/share/:id/access').post(recordVisitorAccess);
 
 export default router;

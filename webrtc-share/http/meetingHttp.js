@@ -174,3 +174,26 @@ export const getArchivedCount = async () => {
         throw error;
     }
 };
+
+// Add function to record visitor access to shared meeting
+export const recordVisitorAccessRequest = async (meetingId, visitorData) => {
+    try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/v1/meetings/share/${meetingId}/access`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(visitorData),
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to record visitor access');
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Error recording visitor access:', error);
+        throw error;
+    }
+};

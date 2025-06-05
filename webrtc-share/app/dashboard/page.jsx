@@ -65,7 +65,7 @@ export default function Page() {
   const typingTimerRef = useRef(null);
   const socketRef = useRef(null);
 
-  const {setResetOpen,setMessageOpen,setLandlordDialogOpen,setTickerOpen,setInviteOpen, setFeedbackOpen, setFaqOpen, setExportOpen} = useDialog();
+  const {setResetOpen,setMessageOpen,setLandlordDialogOpen,setTickerOpen,setInviteOpen, setFeedbackOpen, setFaqOpen, setExportOpen, setHistoryOpen} = useDialog();
 
   useEffect(() => {
     fetchMeetings();
@@ -717,7 +717,7 @@ export default function Page() {
                     const { time, date } = formatMeetingDate(meeting.createdAt);
                     const shareUrl = generateShareUrl(meeting.meeting_id);
                     const actualIndex = indexOfFirstItem + index;
-                    const isArchived = meeting.archived || false; // Check archived status from database
+                    const isArchived = meeting.archived || false;
                     
                     return (
                       <tr key={meeting._id} className="hover:bg-gray-50 border-b">
@@ -780,6 +780,7 @@ export default function Page() {
                             </button>
                             <button 
                               title="History"
+                              onClick={() => setHistoryOpen(true, meeting)}
                               className="hover:bg-gray-50 p-1 rounded"
                             >
                               <img src="/icons/icon-park-outline_history-query.svg" className="w-5 h-5" />
