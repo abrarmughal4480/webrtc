@@ -323,12 +323,22 @@ export default function Page() {
         console.log('🖼️ Adding profile image URL:', profileImageUrl.substring(0, 50) + '...');
       }
       
+      // Store the exact landlord info that will be used for consistency
+      profileData.tokenLandlordInfo = {
+        landlordName: user?.landlordInfo?.landlordName || null,
+        landlordLogo: landlordLogoUrl,
+        profileImage: profileImageUrl,
+        useLandlordLogoAsProfile: user?.landlordInfo?.useLandlordLogoAsProfile || false,
+        profileShape: user?.landlordInfo?.profileShape || 'circle'
+      };
+      
       console.log('📤 Final profile data summary:', {
         hasLandlordName: !!profileData.landlordName,
         hasProfileImage: !!profileData.profileImage,
         hasLandlordLogo: !!profileData.landlordLogo,
         landlordName: profileData.landlordName,
-        urlsAreSame: profileData.profileImage === profileData.landlordLogo
+        urlsAreSame: profileData.profileImage === profileData.landlordLogo,
+        tokenLandlordInfo: profileData.tokenLandlordInfo
       });
       
       // Build query string and make request to the correct endpoint
@@ -342,6 +352,11 @@ export default function Page() {
       if (profileData.landlordName) queryParams.append('landlordName', profileData.landlordName);
       if (profileData.landlordLogo) queryParams.append('landlordLogo', profileData.landlordLogo);
       if (profileData.profileImage) queryParams.append('profileImage', profileData.profileImage);
+      
+      // Add token landlord info as JSON
+      if (profileData.tokenLandlordInfo) {
+        queryParams.append('tokenLandlordInfo', JSON.stringify(profileData.tokenLandlordInfo));
+      }
       
       console.log('🔗 URL will be:', `${backendUrl}/send-token?${queryParams.toString().substring(0, 150)}...`);
       

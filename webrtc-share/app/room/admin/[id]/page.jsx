@@ -945,6 +945,119 @@ export default function Page({ params }) {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [maximizedItem]);
 
+  // Add state for token-specific landlord info
+  const [tokenLandlordInfo, setTokenLandlordInfo] = useState(null);
+  const [isLoadingTokenInfo, setIsLoadingTokenInfo] = useState(true);
+  
+  // Add effect to fetch token-specific landlord information
+  useEffect(() => {
+    const fetchTokenLandlordInfo = async () => {
+      if (!id) return;
+      
+      setIsLoadingTokenInfo(true);
+      try {
+        console.log('🔍 Fetching token landlord info for token:', id);
+        
+        // Try to get token info from backend
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+        const response = await fetch(`${backendUrl}/get-token-info/${id}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.tokenInfo) {
+            console.log('✅ Found token landlord info:', data.tokenInfo);
+            setTokenLandlordInfo(data.tokenInfo);
+          }
+        } else {
+          console.log('ℹ️ No token-specific landlord info found, using current user info');
+        }
+      } catch (error) {
+        console.log('ℹ️ Error fetching token info, using current user info:', error.message);
+      } finally {
+        setIsLoadingTokenInfo(false);
+      }
+    };
+
+    fetchTokenLandlordInfo();
+  }, [id]);
+
+  // Helper function to get landlord name (prioritize token info)
+  const getLandlordName = () => {
+    if (tokenLandlordInfo?.landlordName) {
+      return tokenLandlordInfo.landlordName;
+    }
+    return user?.landlordInfo?.landlordName || null;
+  };
+
+  // Helper function to get landlord logo (prioritize token info)
+  const getLandlordLogo = () => {
+    if (tokenLandlordInfo?.landlordLogo && isValidImageUrl(tokenLandlordInfo.landlordLogo)) {
+      return tokenLandlordInfo.landlordLogo;
+    }
+    if (user?.landlordInfo?.landlordLogo && isValidImageUrl(user.landlordInfo.landlordLogo)) {
+      return user.landlordInfo.landlordLogo;
+    }
+    return null;
+  };
+
+  // Helper function to get profile image (prioritize token info)
+  const getProfileImage = () => {
+    // Check token info first
+    if (tokenLandlordInfo?.profileImage && isValidImageUrl(tokenLandlordInfo.profileImage)) {
+      return tokenLandlordInfo.profileImage;
+    }
+    
+    // Fallback to current user info
+    if (user?.landlordInfo?.useLandlordLogoAsProfile && user?.landlordInfo?.landlordLogo) {
+      if (isValidImageUrl(user.landlordInfo.landlordLogo)) {
+        return user.landlordInfo.landlordLogo;
+      }
+    }
+    
+    if (user?.landlordInfo?.officerImage) {
+      if (isValidImageUrl(user.landlordInfo.officerImage)) {
+        return user.landlordInfo.officerImage;
+      }
+    }
+    
+    return null;
+  };
+
+  // Helper function to check if image URL is valid
+  const isValidImageUrl = (url) => {
+    if (!url) return false;
+    return url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://');
+  };
+
+  // Helper function to get display name (prioritize token info)
+  const getDisplayName = () => {
+    // Use landlord name if available from token or user
+    const landlordName = getLandlordName();
+    if (landlordName) {
+      return landlordName;
+    }
+    
+    // Fallback to username from email
+    if (user?.email) {
+      return user.email.split('@')[0];
+    }
+    
+    return 'User';
+  };
+
+  // Helper function to get initials
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    
+    const words = name.trim().split(' ').filter(word => word.length > 0);
+    if (words.length === 1) {
+      return words[0].charAt(0).toUpperCase();
+    } else if (words.length >= 2) {
+      return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+    }
+    return name.charAt(0).toUpperCase();
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-4 py-10 font-sans">
       {/* Maximized Item Modal */}
@@ -994,8 +1107,8 @@ export default function Page({ params }) {
             <div className="flex items-center gap-4 mb-6">
               <div className="flex items-center">
                 <a href="/" className="text-2xl font-bold text-gray-900 flex items-center">
-                  <VideoIcon className="mr-2" />
-                  <span>Videodesk.co.uk</span>
+                  <VideoIcon className="mr-2"/>
+                  <span> Videodesk.co.uk</span>
                 </a>
               </div>
             </div>
@@ -1003,17 +1116,26 @@ export default function Page({ params }) {
             {/* User Greeting */}
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-full overflow-hidden">
-                <img
-                  src="https://i.pravatar.cc/300"
-                  alt="User avatar"
-                  width={48}
-                  height={48}
-                  className="object-cover"
-                />
+                {getProfileImage() ? (
+                  <img
+                    src={getProfileImage()}
+                    alt="Profile Image"
+                    width={48}
+                    height={48}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center text-gray-600 font-semibold text-lg rounded-full">
+                    {getInitials(getDisplayName())}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-sm text-gray-600">Hello,</p>
-                <p className="font-semibold">Sharon</p>
+                <p className="font-semibold">{getDisplayName()}</p>
               </div>
             </div>
 
@@ -1559,7 +1681,13 @@ export default function Page({ params }) {
         </div>
       </div>
 
-      <p className="text-xs mt-5">User : Sharon Smith 24 May 2025, 10.00 am</p>
+      {/* Footer with token info indicator */}
+      <div className="flex items-center justify-between mt-5">
+        <p className="text-xs">User : {getDisplayName()} {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}, {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase()}</p>
+        {tokenLandlordInfo && (
+          <p className="text-xs text-green-600">✓ Using profile info from video link</p>
+        )}
+      </div>
     </div>
   )
 }
